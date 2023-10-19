@@ -14,6 +14,7 @@ import javax.servlet.http.HttpServletResponse;
 
 import com.google.gson.Gson;
 import com.recordManagement.dao.RecordDAO;
+import com.recordManagement.exceptions.RecordNotFoundException;
 import com.recordManagement.model.Record;
 
 import org.apache.catalina.connector.Response;
@@ -25,7 +26,7 @@ import org.apache.catalina.connector.Response;
 
 public class RecordServlet extends HttpServlet {
 	private static final long serialVersionUID = 1L;
-       
+    private String request_id = null;
 	private RecordDAO recordDAO = null;
 	
     public void init() {
@@ -39,14 +40,49 @@ public class RecordServlet extends HttpServlet {
         super();
     }
     
+    public void service(HttpServletRequest req, HttpServletResponse res) throws ServletException, IOException {
+    	System.err.print(req.getMethod());
+    	System.out.println(" - function called");
+    	try {
+    		this.request_id = req.getHeader("request_id");
+    		if(this.request_id == null) {
+    			throw new Exception("request_id required");
+    		}
+    	}catch(Exception e) {
+    		res.setStatus(HttpServletResponse.SC_BAD_REQUEST); 
+    		ResponseData resData = new ResponseData(request_id, e.getMessage());
+    		res.getWriter().print(new Gson().toJson(resData));
+    	}
+    	switch (req.getMethod()){
+    		case "GET" : {
+    			doGet(req, res);
+    			break;
+    		}
+    		case "POST" : {
+    			doPost(req, res);
+    			break;
+    		}
+    		case "PUT" : {
+    			doPut(req, res); 
+    			break;
+    		}
+    		case "DELETE" : {
+    			doPost(req, res);
+    			break; 
+    		}
+    		default : {
+    			
+    		}
+    	}
+    }
+    
     /**
      * @see HttpServlet#doPost(HttpServletRequest request, HttpServletResponse response)
      */
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
     	String pathInfo =  request.getPathInfo();
 		String servletPath = request.getServletPath()+(pathInfo!=null ? pathInfo : "");
-		String request_id = request.getHeader("request_id");
-		ResponseData resData = new ResponseData(request_id, "failure");
+		ResponseData resData = new ResponseData(this.request_id, "failure");
 		response.setContentType("application/json");
 		
 		if(servletPath.equals("/record")) {
@@ -79,9 +115,9 @@ public class RecordServlet extends HttpServlet {
 	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse response)
 	 */
 	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		
 		String pathInfo =  request.getPathInfo();
 		String servletPath = request.getServletPath()+(pathInfo!=null ? pathInfo : "");
-		String request_id = request.getHeader("request_id");
 		
 		System.out.println(servletPath); 
 		
@@ -90,14 +126,14 @@ public class RecordServlet extends HttpServlet {
 		if (servletPath.startsWith("/record/")) {
 
 			String numberPart = servletPath.substring("/record/".length()).strip();
-
+ 
             try {
                 int id = Integer.parseInt(numberPart);
                 String resData = this.getRecord(id, request, response);
                
                 if(resData ==  null) {
                 	response.setStatus(Response.SC_NOT_FOUND);
-                	response.getWriter().print(new Gson().toJson(new ResponseData(request_id, "failure")));
+                	response.getWriter().print(resData);
                 	return;
                 }else { 
         	    	response.getWriter().print(resData);
@@ -106,7 +142,7 @@ public class RecordServlet extends HttpServlet {
             	String resData = this.getAllRecords(request);
             	if(resData ==  null) {
                 	response.setStatus(Response.SC_NOT_FOUND);
-                	response.getWriter().print(new Gson().toJson(new ResponseData(request_id, "failure")));
+                	response.getWriter().print(new Gson().toJson(new ResponseData(this.request_id, "failure")));
                 	return;
 	            }else { 
 	            	// record is found
@@ -120,7 +156,7 @@ public class RecordServlet extends HttpServlet {
         	if(resData ==  null) {
         		
             	response.setStatus(Response.SC_NOT_FOUND);
-            	response.getWriter().print(new Gson().toJson(new ResponseData(request_id, "failure")));
+            	response.getWriter().print(new Gson().toJson(new ResponseData(this.request_id, "failure")));
             	return;
             	
             }else { 
@@ -132,7 +168,7 @@ public class RecordServlet extends HttpServlet {
         } else { 
         	response.setStatus(Response.SC_NOT_ACCEPTABLE);
         	PrintWriter out = response.getWriter();
-        	out.print(new Gson().toJson(new ResponseData(request_id, "failure")));
+        	out.print(new Gson().toJson(new ResponseData(this.request_id, "failure")));
         	return;
 		}
 	}
@@ -145,7 +181,7 @@ public class RecordServlet extends HttpServlet {
 		String pathInfo =  request.getPathInfo();
 		String servletPath = request.getServletPath()+(pathInfo!=null ? pathInfo : "");
 		
-		ResponseData resData = new ResponseData(request.getHeader("request_id"), "record not deleted or not exist");
+		ResponseData resData = new ResponseData(this.request_id, "record not deleted or not exist");
 		response.setContentType("application/json");
 
 		Gson gson = new Gson();
@@ -211,19 +247,52 @@ public class RecordServlet extends HttpServlet {
     			return;
 		    }
 		}
-	}
+	} 
 	
 	/* 
-	 * this function will update the record if the request contain user id with token key
+	 * this function will UPDATE the record if the request contain user id with token key
 	 */
-	protected void doPut(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-		resp.setStatus(202);
-	}	
+	protected void doPut(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+	    String pathInfo = request.getPathInfo();
+	    String servletPath = request.getServletPath() + (pathInfo != null ? pathInfo : "");
+	    ResponseData resData = new ResponseData(this.request_id, "failure");
+	    response.setContentType("application/json");
+
+	    if (!servletPath.equals("/record")) {
+	        sendErrorResponse(response, resData, Response.SC_BAD_REQUEST, "Wrong method or wrong endpoint");
+	        return;
+	    }
+
+	    try {
+	        BufferedReader body = request.getReader();
+	        Gson gson = new Gson();
+	        Record record = gson.fromJson(body, Record.class);
+
+	        if (record == null) {
+	            sendErrorResponse(response, resData, Response.SC_BAD_REQUEST, "Invalid input data");
+	            return;
+	        }
+
+	        Record updatedRecord = recordDAO.updateRecord(record);
+
+	        if (updatedRecord != null) {
+	        	resData.setData(record);
+	        	sendSuccessResponse(response, resData, "Record successfully updated");
+	        } else {
+	            sendErrorResponse(response, resData, Response.SC_INTERNAL_SERVER_ERROR, "Failed to update the record");
+	        }
+
+	    } catch (RecordNotFoundException e) {
+	        sendErrorResponse(response, resData, Response.SC_BAD_REQUEST, e.getMessage());
+	    } catch (Exception e) {
+	        sendErrorResponse(response, resData, Response.SC_INTERNAL_SERVER_ERROR, "Internal server error");
+	    }
+	}
 	
 	protected String getRecord(int id,HttpServletRequest req, HttpServletResponse resp) {
 		Record record =	recordDAO.getRecord(id, req.getIntHeader("user_id"));
     	if(record == null)return null;
-    	ResponseData responseData = new ResponseData(req.getHeader("request_id"), record, "success");
+    	ResponseData responseData = new ResponseData(this.request_id, record, "success");
     	
     	Gson gs = new Gson(); 
     	 
@@ -234,58 +303,27 @@ public class RecordServlet extends HttpServlet {
 	protected String getAllRecords(HttpServletRequest req) {
 		List<Record> records =	recordDAO.getAllRecords(req.getIntHeader("user_id"));
 		ResponseData responseData = null;
-    	if(records == null) {return null;};
-    	 responseData = new ResponseData(req.getHeader("request_id"), records, "success");
+		
+    	if(records.isEmpty()) {return null;};
+    	 responseData = new ResponseData(this.request_id, records, "success");
     	
     	Gson gs = new Gson(); 
     	
     	String json = gs.toJson(responseData);
 		return json;
 	}
-}
-
-
-class ResponseData{
 	
-	private String request_id = null;
-	private Record data = null;
-	List<Record> datas = null;
-	String message = null;
-
-	public void setMessage(String message) {
-		this.message = message;
-	}
-	//for individual record
-	public ResponseData(String request_id, Record data, String message) {
-		super();
-		this.request_id = request_id;
-		this.data = data;
-		this.message = message;
-	}
-	//for bulk record
-	public ResponseData(String request_id, List<Record> datas, String message) {
-		super();
-		this.request_id = request_id;
-		this.datas = datas;
-		this.message = message;
-	}
-	// for failure reuquests
-	public ResponseData(String request_id, String message) {
-		super();
-		this.request_id = request_id;
-		this.message = message;
+	private void sendSuccessResponse(HttpServletResponse response, ResponseData resData, String message) throws IOException {
+	    response.setStatus(Response.SC_OK);
+	    resData.setMessage(message);
+	    response.getWriter().print(new Gson().toJson(resData));
 	}
 
-	public String getRequest_id() {
-		return request_id;
-	}
-	public void setRequest_id(String request_id) {
-		this.request_id = request_id;
-	}
-	public Record getData() {
-		return data;
-	}
-	public void setData(Record data) {
-		this.data = data;
+	private void sendErrorResponse(HttpServletResponse response, ResponseData resData, int statusCode, String message) throws IOException {
+	    response.setStatus(statusCode);
+	    resData.setMessage(message);
+	    response.getWriter().print(new Gson().toJson(resData));
 	}
 }
+
+

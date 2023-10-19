@@ -11,9 +11,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import com.recordManagement.exceptions.RecordNotFoundException;
 import com.recordManagement.model.Record;
-
-import org.apache.catalina.connector.Response;
 
 public class RecordDAO {
 	
@@ -23,16 +22,18 @@ public class RecordDAO {
 	
 	private static final String INSERT_RECORD_SQL ="INSERT INTO `mypcot`.`records` (`user_id`, `title`, `description`, `category_id`, `status`, `created_at`, `updated_at`) VALUES (?, ?, ?, ?, ?, NOW(), NOW())";
 
-
     private static final String SELECT_RECORD_BY_ID = "SELECT * FROM `mypcot`.`records` WHERE id = ? AND user_id = ?;";
 //    private static final String SELECT_RECORD_BY_TITLE = "select * from `mypcot`.`records` where title =?";
     private static final String SELECT_ALL_RECORDS = "select * from `mypcot`.`records`  WHERE user_id = ?";
     private static final String DELETE_RECORD_SQL = "DELETE FROM `mypcot`.`records` WHERE `id` = ? ;";
     private static final String DELETE_MULTY_RECORD_SQL = "DELETE FROM `mypcot`.`records` WHERE `id` in ? ;";
-//    private static final String UPDATE_RECORDS_SQL = "UPDATE `mypcot`.`records` SET `title` = ?, `description` = ?, `category_id` = ?, `status` = ?, `updated_at` = ? WHERE (`id` = ?);";
+    private static final String UPDATE_RECORD_SQL = "UPDATE `mypcot`.`records` SET `title` = ?, `description` = ?, `category_id` = ?, `status` = ?, `updated_at` = NOW() WHERE (`id` = ?);";
 
     public RecordDAO() {}
     
+    /*
+     * getting the connection from mysql connector
+     */
     protected Connection getConnection() {
         Connection connection = null;
         try {  
@@ -48,7 +49,10 @@ public class RecordDAO {
         return connection;
     }
     
-    public int insertRecord(Record record) throws SQLException {
+    /*
+     * insert the new record in the database
+     */
+    public int insertRecord(Record record) throws SQLException, RecordNotFoundException {
     	try (Connection connection = getConnection(); 
     		     PreparedStatement preparedStatement = connection.prepareStatement(INSERT_RECORD_SQL, Statement.RETURN_GENERATED_KEYS)) {
     		    preparedStatement.setLong(1, record.getUser_id());
@@ -71,6 +75,8 @@ public class RecordDAO {
     		} catch (SQLException e) {
     		    e.printStackTrace();
     		    return 0;
+    		} catch (NullPointerException e) {
+    			 throw new RecordNotFoundException("Insufficiant or incorrect data given");
     		}
     }
     
@@ -133,6 +139,28 @@ public class RecordDAO {
         return records;
     }
     
+    public Record updateRecord(Record record) throws RecordNotFoundException{
+    	try (Connection connection = getConnection();) {
+    		PreparedStatement statement = connection.prepareStatement(UPDATE_RECORD_SQL);
+    		 statement.setString(1, record.getTitle());
+    		 statement.setString(2, record.getDescription());
+    		 statement.setLong(3, record.getCategory_id());
+    		 statement.setInt(4, record.isStatus());
+    		 statement.setInt(5, record.getId());
+    		 
+    		 System.out.println(statement);  
+    		 if(statement.executeUpdate() > 0) {
+    			 return record;
+    		 }
+    		 else {
+    			 return null;
+    		 }
+    		 
+    	}catch( Exception e) {
+    		return null;
+    	}
+    }
+    
     /*
      * delete specific record
      */
@@ -153,8 +181,11 @@ public class RecordDAO {
         	System.out.println(statement);  
         	
             rowDeleted = statement.executeUpdate() > 0;
+        }catch(Exception e) {
+        	return false;
         }
         return rowDeleted;
         
     }
+
 }
